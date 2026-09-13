@@ -30,7 +30,7 @@ server-authored timestamps.
 
 ## Goals and non-goals
 
-Goals are a seeded coordinator identity, a useful vendor list, forward stage transitions, attributable history,
+Goals are a seeded coordinator identity, a useful vendor list, stage transitions, attributable history,
 and stuck-vendor highlighting. Non-goals are vendor CRUD, account administration, production authentication,
 external integrations, deployment infrastructure, and assignment/reassignment.
 
@@ -38,7 +38,7 @@ external integrations, deployment infrastructure, and assignment/reassignment.
 
 - **Coordinator:** the authenticated operator using this application.
 - **Stage:** one of the five ordered vendor onboarding states.
-- **Transition:** an allowed move from the current stage to its immediate successor.
+- **Transition:** an allowed move from the current stage to any different workflow stage, including a previous stage.
 - **Stuck:** a non-Active vendor that has remained in its current stage for more than the configured threshold.
 
 ## Current state
@@ -95,9 +95,10 @@ erDiagram
 ```
 
 Coordinator email is normalized to lowercase before lookup and constrained to lowercase in PostgreSQL. Passwords
-are stored as bcrypt hashes. Vendor stages and transition stages are constrained to the five workflow values, and
-same-stage history records are rejected. The vendor row is the current-state read model; transition rows form the
-attributable history. Phase 4 writes both atomically while holding a row lock.
+are stored as bcrypt hashes. The application validates stage inputs against the five workflow values, while the
+database rejects same-stage history records. Backward transitions are permitted and recorded like any other change.
+The vendor row is the current-state read model; transition rows form the attributable history. Phase 4 writes both
+atomically while holding a row lock.
 
 ## API contracts
 
@@ -165,5 +166,6 @@ Each phase is a reviewable PR-sized change with its own verification gate.
 
 - The three-hour limit requires cutting presentation polish before workflow correctness.
 - In-memory sessions intentionally disappear when the API restarts.
-- Forward-only transitions cannot correct bad data; a later corrective event should require a reason.
+- Allowing backward transitions supports corrections but can also permit accidental regression; a production
+  workflow could require confirmation or a reason when moving backward.
 - The first product improvement is assignment/reassignment with an append-only ownership history.
