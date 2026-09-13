@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { Spinner } from '../components/atoms/Spinner'
+import { InfoTooltip } from '../components/atoms/InfoTooltip'
 import { ErrorAlert } from '../components/molecules/ErrorAlert'
 import { type VendorFilterValue, VendorFilter } from '../components/molecules/VendorFilter'
 import { AppHeader } from '../components/organisms/AppHeader'
@@ -85,7 +86,12 @@ export function DashboardPage() {
       {vendors.data ? (
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
           <SummaryCard label="Total vendors" value={vendors.data.length} />
-          <SummaryCard label="Need attention" tone="danger" value={stuckCount} />
+          <SummaryCard
+            helpText="A vendor needs attention when it stays in the same onboarding stage longer than the configured limit (7 days by default). Active vendors are excluded. The system calculates this automatically from when the vendor entered its current stage."
+            label="Need attention"
+            tone="danger"
+            value={stuckCount}
+          />
           <SummaryCard label="Active" tone="success" value={activeCount} />
         </div>
       ) : null}
@@ -122,16 +128,20 @@ export function DashboardPage() {
 }
 
 type SummaryCardProps = {
+  helpText?: string
   label: string
   tone?: 'neutral' | 'danger' | 'success'
   value: number
 }
 
-function SummaryCard({ label, tone = 'neutral', value }: SummaryCardProps) {
+function SummaryCard({ helpText, label, tone = 'neutral', value }: SummaryCardProps) {
   const valueClass = tone === 'danger' ? 'text-rose-700' : tone === 'success' ? 'text-emerald-700' : 'text-slate-950'
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-      <p className="text-sm font-medium text-slate-500">{label}</p>
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-medium text-slate-500">{label}</p>
+        {helpText ? <InfoTooltip label={`What does ${label} mean?`}>{helpText}</InfoTooltip> : null}
+      </div>
       <p className={`mt-1 text-2xl font-bold ${valueClass}`}>{value}</p>
     </div>
   )

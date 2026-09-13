@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -64,6 +64,13 @@ describe('DashboardPage', () => {
     expect(within(stuckRow).getByText('Huy Tran')).toBeInTheDocument()
     expect(within(stuckRow).getByText('Waiting on business license re-upload')).toBeInTheDocument()
 
+    const attentionInfo = screen.getByRole('button', { name: 'What does Need attention mean?' })
+    const attentionTooltip = screen.getByRole('tooltip')
+    expect(attentionInfo).toHaveAttribute('aria-describedby', attentionTooltip.id)
+    expect(attentionTooltip).toHaveTextContent(
+      'A vendor needs attention when it stays in the same onboarding stage longer than the configured limit (7 days by default). Active vendors are excluded.',
+    )
+
     fireEvent.click(screen.getByRole('button', { name: /Assigned to me/ }))
     expect(within(table).queryByRole('row', { name: /Company B/ })).not.toBeInTheDocument()
     expect(within(table).getByRole('row', { name: /Company C/ })).toBeInTheDocument()
@@ -91,12 +98,139 @@ describe('DashboardPage', () => {
     renderDashboard('/vendors/company-b')
 
     expect(await screen.findByRole('complementary', { name: 'Company B details' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Close' })).toHaveClass('border-rose-300', 'text-rose-700')
     expect(await screen.findByText('Contract Signed → KYC Docs Received')).toBeInTheDocument()
     expect(screen.getByText('Changed by Linh Nguyen')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/vendors/company-b/history',
       expect.objectContaining({ credentials: 'include' }),
     )
+  })
+
+  it('moves a vendor backward and refreshes its current state and history', async () => {
+    let stageUpdated = false
+    const transition = {
+      id: 'event-2',
+      occurred_at: '2026-09-13T08:30:00Z',
+      actor: { id: 'coordinator-1', name: 'Linh Nguyen' },
+      previous_stage: 'KYC_DOCS_RECEIVED' as const,
+      new_stage: 'CONTRACT_SIGNED' as const,
+    }
+    const updatedVendors = vendors.map((vendor) =>
+      vendor.id === 'company-b'
+        ? {
+            ...vendor,
+            current_stage: transition.new_stage,
+            stage_entered_at: transition.occurred_at,
+            hours_in_current_stage: 0,
+            is_stuck: false,
+            next_stage: 'KYC_DOCS_RECEIVED' as const,
+          }
+        : vendor,
+    )
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/v1/vendors/company-b/stage' && init?.method === 'PATCH') {
+        stageUpdated = true
+        return new Response(JSON.stringify({ transition }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (path === '/api/v1/vendors') {
+        return new Response(JSON.stringify({ vendors: updatedVendors }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (path === '/api/v1/vendors/company-b/history') {
+        return new Response(JSON.stringify({ history: stageUpdated ? [transition] : [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDashboard('/vendors/company-b')
+
+    expect(await screen.findByRole('complementary', { name: 'Company B details' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Move to stage'), { target: { value: 'CONTRACT_SIGNED' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update stage' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Stage updated to Contract Signed.')
+    expect(await screen.findByText('KYC Docs Received → Contract Signed')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/vendors/company-b/stage',
+      expect.objectContaining({
+        body: JSON.stringify({
+          expected_current_stage: 'KYC_DOCS_RECEIVED',
+          new_stage: 'CONTRACT_SIGNED',
+        }),
+        credentials: 'include',
+        method: 'PATCH',
+      }),
+    )
+  })
+
+  it('refreshes the vendor instead of overwriting a concurrent stage change', async () => {
+    let conflictReturned = false
+    const concurrentTransition = {
+      id: 'event-concurrent',
+      occurred_at: '2026-09-13T08:25:00Z',
+      actor: { id: 'coordinator-2', name: 'Huy Tran' },
+      previous_stage: 'KYC_DOCS_RECEIVED' as const,
+      new_stage: 'KYC_VERIFIED' as const,
+    }
+    const concurrentlyUpdatedVendors = vendors.map((vendor) =>
+      vendor.id === 'company-b'
+        ? {
+            ...vendor,
+            current_stage: concurrentTransition.new_stage,
+            stage_entered_at: concurrentTransition.occurred_at,
+            hours_in_current_stage: 0,
+            is_stuck: false,
+            next_stage: 'ACTIVE' as const,
+          }
+        : vendor,
+    )
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/v1/vendors/company-b/stage' && init?.method === 'PATCH') {
+        conflictReturned = true
+        return new Response(
+          JSON.stringify({ code: 'STAGE_CONFLICT', message: 'Vendor stage changed since it was loaded.' }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (path === '/api/v1/vendors') {
+        return new Response(JSON.stringify({ vendors: concurrentlyUpdatedVendors }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (path === '/api/v1/vendors/company-b/history') {
+        return new Response(JSON.stringify({ history: conflictReturned ? [concurrentTransition] : [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDashboard('/vendors/company-b')
+
+    expect(await screen.findByRole('complementary', { name: 'Company B details' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Move to stage'), { target: { value: 'ACTIVE' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update stage' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Another coordinator changed this vendor. Review the latest stage and try again.',
+    )
+    await waitFor(() => expect(screen.getByLabelText('Move to stage')).toHaveValue('KYC_VERIFIED'))
+    expect(await screen.findByText('KYC Docs Received → KYC Verified')).toBeInTheDocument()
   })
 
   it('renders a recoverable state for an unknown vendor URL', () => {

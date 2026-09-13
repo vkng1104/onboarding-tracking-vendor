@@ -9,6 +9,7 @@ import (
 type Store interface {
 	List(context.Context) ([]record, error)
 	History(context.Context, string) ([]HistoryEvent, error)
+	UpdateStage(context.Context, string, string, Stage, Stage, time.Time) (stageTransitionRecord, error)
 }
 
 type Service struct {
@@ -64,4 +65,39 @@ func (s *Service) History(ctx context.Context, vendorID string) ([]HistoryEvent,
 		return nil, fmt.Errorf("get vendor history: %w", err)
 	}
 	return history, nil
+}
+
+func (s *Service) UpdateStage(
+	ctx context.Context,
+	vendorID string,
+	actor CoordinatorSummary,
+	expectedCurrentStage Stage,
+	newStage Stage,
+) (HistoryEvent, error) {
+	if !isValidStage(expectedCurrentStage) || !isValidStage(newStage) {
+		return HistoryEvent{}, ErrInvalidStage
+	}
+	if expectedCurrentStage == newStage {
+		return HistoryEvent{}, ErrStageUnchanged
+	}
+
+	transition, err := s.store.UpdateStage(
+		ctx,
+		vendorID,
+		actor.ID,
+		expectedCurrentStage,
+		newStage,
+		s.now().UTC(),
+	)
+	if err != nil {
+		return HistoryEvent{}, fmt.Errorf("update vendor stage: %w", err)
+	}
+
+	return HistoryEvent{
+		ID:            transition.ID,
+		OccurredAt:    transition.OccurredAt,
+		Actor:         actor,
+		PreviousStage: transition.PreviousStage,
+		NewStage:      transition.NewStage,
+	}, nil
 }

@@ -1,5 +1,18 @@
 package vendor
 
+func isValidStage(stage Stage) bool {
+	switch stage {
+	case StageContractSent,
+		StageContractSigned,
+		StageKYCDocsReceived,
+		StageKYCVerified,
+		StageActive:
+		return true
+	default:
+		return false
+	}
+}
+
 func nextStage(current Stage) *Stage {
 	var next Stage
 	switch current {

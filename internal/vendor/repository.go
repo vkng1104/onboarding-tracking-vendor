@@ -2,18 +2,26 @@ package vendor
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/khanhvunguyen/vendor-onboarding-tracker/internal/database"
 )
 
-type Repository struct {
-	database database.Queryer
+type repositoryDatabase interface {
+	database.Queryer
+	WithinTx(context.Context, pgx.TxOptions, func(pgx.Tx) error) error
 }
 
-func NewRepository(database database.Queryer) *Repository {
+type Repository struct {
+	database repositoryDatabase
+}
+
+func NewRepository(database repositoryDatabase) *Repository {
 	return &Repository{database: database}
 }
 
@@ -120,10 +128,98 @@ func (r *Repository) History(ctx context.Context, vendorID string) ([]HistoryEve
 	return history, nil
 }
 
+func (r *Repository) UpdateStage(
+	ctx context.Context,
+	vendorID string,
+	coordinatorID string,
+	expectedCurrentStage Stage,
+	newStage Stage,
+	changedAt time.Time,
+) (stageTransitionRecord, error) {
+	id, err := parseVendorID(vendorID)
+	if err != nil {
+		return stageTransitionRecord{}, err
+	}
+	actorID, err := parseCoordinatorID(coordinatorID)
+	if err != nil {
+		return stageTransitionRecord{}, err
+	}
+
+	var transition stageTransitionRecord
+	err = r.database.WithinTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		const lockQuery = `SELECT current_stage FROM vendors WHERE id = $1 FOR UPDATE`
+		var currentStage Stage
+		if err := tx.QueryRow(ctx, lockQuery, id).Scan(&currentStage); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return fmt.Errorf("lock vendor: %w", err)
+		}
+
+		if currentStage != expectedCurrentStage {
+			return ErrStageConflict
+		}
+		if currentStage == newStage {
+			return ErrStageUnchanged
+		}
+
+		const updateQuery = `
+			UPDATE vendors
+			SET current_stage = $2, stage_entered_at = $3, updated_at = $3
+			WHERE id = $1
+		`
+		if _, err := tx.Exec(ctx, updateQuery, id, newStage, changedAt); err != nil {
+			return fmt.Errorf("update vendor: %w", err)
+		}
+
+		const insertQuery = `
+			INSERT INTO vendor_stage_transitions (
+				id,
+				vendor_id,
+				previous_stage,
+				new_stage,
+				changed_by_coordinator_id,
+				changed_at
+			)
+			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+			RETURNING id
+		`
+		if err := tx.QueryRow(
+			ctx,
+			insertQuery,
+			id,
+			currentStage,
+			newStage,
+			actorID,
+			changedAt,
+		).Scan(&transition.ID); err != nil {
+			return fmt.Errorf("insert vendor stage transition: %w", err)
+		}
+
+		transition.OccurredAt = changedAt
+		transition.PreviousStage = currentStage
+		transition.NewStage = newStage
+		return nil
+	})
+	if err != nil {
+		return stageTransitionRecord{}, err
+	}
+
+	return transition, nil
+}
+
 func parseVendorID(value string) (pgtype.UUID, error) {
 	var id pgtype.UUID
 	if err := id.Scan(value); err != nil || !id.Valid {
 		return pgtype.UUID{}, ErrNotFound
+	}
+	return id, nil
+}
+
+func parseCoordinatorID(value string) (pgtype.UUID, error) {
+	var id pgtype.UUID
+	if err := id.Scan(value); err != nil || !id.Valid {
+		return pgtype.UUID{}, fmt.Errorf("parse coordinator id")
 	}
 	return id, nil
 }

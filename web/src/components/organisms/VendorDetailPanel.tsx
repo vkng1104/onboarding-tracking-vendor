@@ -6,6 +6,7 @@ import { useVendorHistory } from '../../features/vendors/queries'
 import { StageBadge } from '../atoms/StageBadge'
 import { VendorHealthBadge } from '../atoms/VendorHealthBadge'
 import { ErrorAlert } from '../molecules/ErrorAlert'
+import { StageUpdateForm } from '../molecules/StageUpdateForm'
 
 export function VendorDetailPanel({ vendor }: { vendor: Vendor }) {
   const history = useVendorHistory(vendor.id)
@@ -23,9 +24,12 @@ export function VendorDetailPanel({ vendor }: { vendor: Vendor }) {
             <p className="mt-1 text-sm text-slate-500">{vendor.region}</p>
           </div>
           <Link
-            className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm font-semibold text-rose-700 shadow-sm transition hover:border-rose-400 hover:bg-rose-50 hover:text-rose-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"
             to="/vendors"
           >
+            <svg aria-hidden="true" className="size-4" fill="none" viewBox="0 0 24 24">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+            </svg>
             Close
           </Link>
         </div>
@@ -57,6 +61,8 @@ export function VendorDetailPanel({ vendor }: { vendor: Vendor }) {
             <dd className="mt-1 leading-6 text-slate-700">{vendor.notes || 'No notes added.'}</dd>
           </div>
         </dl>
+
+        <StageUpdateForm currentStage={vendor.current_stage} key={vendor.id} vendorId={vendor.id} />
 
         <section aria-labelledby="history-heading" className="border-t border-slate-200 pt-5">
           <div className="flex items-baseline justify-between gap-3">

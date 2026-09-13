@@ -19,3 +19,18 @@ func TestParseVendorID(t *testing.T) {
 		t.Fatalf("parse invalid vendor id error = %v, want %v", err, ErrNotFound)
 	}
 }
+
+func TestParseCoordinatorID(t *testing.T) {
+	validID := "10000000-0000-0000-0000-000000000001"
+	id, err := parseCoordinatorID(validID)
+	if err != nil {
+		t.Fatalf("parse valid coordinator id: %v", err)
+	}
+	if !id.Valid {
+		t.Fatal("parsed coordinator id is not valid")
+	}
+
+	if _, err := parseCoordinatorID("not-a-coordinator"); err == nil {
+		t.Fatal("parse invalid coordinator id error = nil, want error")
+	}
+}

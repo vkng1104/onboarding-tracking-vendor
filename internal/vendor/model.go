@@ -38,6 +38,13 @@ type HistoryEvent struct {
 	NewStage      Stage              `json:"new_stage"`
 }
 
+type stageTransitionRecord struct {
+	ID            string
+	OccurredAt    time.Time
+	PreviousStage Stage
+	NewStage      Stage
+}
+
 type record struct {
 	ID              string
 	Name            string
