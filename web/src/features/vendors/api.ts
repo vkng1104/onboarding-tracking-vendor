@@ -7,6 +7,14 @@ export type Stage =
   | 'KYC_VERIFIED'
   | 'ACTIVE'
 
+export const stages: readonly Stage[] = [
+  'CONTRACT_SENT',
+  'CONTRACT_SIGNED',
+  'KYC_DOCS_RECEIVED',
+  'KYC_VERIFIED',
+  'ACTIVE',
+]
+
 export type CoordinatorSummary = {
   id: string
   name: string
@@ -43,4 +51,19 @@ export async function getVendorHistory(vendorId: string): Promise<HistoryEvent[]
     `/api/v1/vendors/${encodeURIComponent(vendorId)}/history`,
   )
   return response.history
+}
+
+export async function updateVendorStage(
+  vendorId: string,
+  expectedCurrentStage: Stage,
+  newStage: Stage,
+): Promise<HistoryEvent> {
+  const response = await request<{ transition: HistoryEvent }>(
+    `/api/v1/vendors/${encodeURIComponent(vendorId)}/stage`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ expected_current_stage: expectedCurrentStage, new_stage: newStage }),
+    },
+  )
+  return response.transition
 }

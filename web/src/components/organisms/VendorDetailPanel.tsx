@@ -6,6 +6,7 @@ import { useVendorHistory } from '../../features/vendors/queries'
 import { StageBadge } from '../atoms/StageBadge'
 import { VendorHealthBadge } from '../atoms/VendorHealthBadge'
 import { ErrorAlert } from '../molecules/ErrorAlert'
+import { StageUpdateForm } from '../molecules/StageUpdateForm'
 
 export function VendorDetailPanel({ vendor }: { vendor: Vendor }) {
   const history = useVendorHistory(vendor.id)
@@ -57,6 +58,8 @@ export function VendorDetailPanel({ vendor }: { vendor: Vendor }) {
             <dd className="mt-1 leading-6 text-slate-700">{vendor.notes || 'No notes added.'}</dd>
           </div>
         </dl>
+
+        <StageUpdateForm currentStage={vendor.current_stage} key={vendor.id} vendorId={vendor.id} />
 
         <section aria-labelledby="history-heading" className="border-t border-slate-200 pt-5">
           <div className="flex items-baseline justify-between gap-3">
