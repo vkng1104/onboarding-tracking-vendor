@@ -3,8 +3,8 @@
 A small SPA for coordinators to track seeded vendors through onboarding, see how long each vendor has remained in
 its current stage, and retain an attributable history of every stage change.
 
-> Implementation status: Phase 3 of 5 is complete. Coordinators can review all seeded vendors, filter to their
-> assignments, identify stuck vendors, and open durable stage history. Stage updates arrive in Phase 4.
+> Implementation status: Phase 4 of 5 is complete. Coordinators can review all seeded vendors, identify stuck
+> vendors, inspect durable history, and move a vendor to any different workflow stage, including an earlier stage.
 
 ## Run locally
 
@@ -65,9 +65,11 @@ pnpm --dir web build
 ## Architecture
 
 The backend is a Go modular monolith using chi and pgx. PostgreSQL holds the current vendor state and append-only
-transition history; the API derives elapsed hours, stuck state, and the expected next stage. The React/Vite
-frontend uses React Router and TanStack Query, and its components follow pragmatic Atomic Design. Docker Compose
-starts PostgreSQL, applies migrations, performs a non-destructive seed, and then starts the API and web application.
+transition history; each stage change updates both atomically under a row lock and attributes the event to the
+authenticated coordinator. The API derives elapsed hours, stuck state, and the informational expected next stage.
+The React/Vite frontend uses React Router and TanStack Query, and its components follow pragmatic Atomic Design.
+Docker Compose starts PostgreSQL, applies migrations, performs a non-destructive seed, and then starts the API and
+web application.
 
 Detailed decisions and diagrams live in
 [`docs/RFC-001-vendor-onboarding-tracker.md`](docs/RFC-001-vendor-onboarding-tracker.md).
@@ -92,5 +94,5 @@ improvement after the assignment.
 
 Tests focus on business risks rather than framework coverage: identity comes from the server session, invalid or
 expired sessions cannot reach protected routes, the stuck threshold is correct at its time boundary, Active is
-never stuck, direct vendor URLs recover safely, and internal errors do not leak. Phase 4 adds workflow,
-transaction, and concurrency guarantees.
+never stuck, direct vendor URLs recover safely, and internal errors do not leak. Stage-transition tests cover
+backward corrections, invalid and unchanged stages, stale concurrent writes, and rollback if audit insertion fails.

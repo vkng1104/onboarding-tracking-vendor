@@ -35,6 +35,24 @@ jobs:
       - name: Test with race detector
         run: go test -race ./...
 
+  backend-integration:
+    name: Backend integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test transactions and concurrency against PostgreSQL
+        run: make test-integration
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
