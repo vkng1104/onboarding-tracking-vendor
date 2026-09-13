@@ -1,0 +1,116 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: vendor_onboarding
+      POSTGRES_USER: onboarding
+      POSTGRES_PASSWORD: onboarding
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onboarding -d vendor_onboarding"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  migrate:
+    image: migrate/migrate:v4.18.3
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgres://onboarding:onboarding@postgres:5432/vendor_onboarding?sslmode=disable
+      - up
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  seed:
+    image: postgres:17-alpine
+    environment:
+      DATABASE_URL: postgres://onboarding:onboarding@postgres:5432/vendor_onboarding?sslmode=disable
+    volumes:
+      - ./seed:/seed:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -f /seed/development.sql']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  seed-reset:
+    image: postgres:17-alpine
+    profiles: ["tools"]
+    environment:
+      DATABASE_URL: postgres://onboarding:onboarding@postgres:5432/vendor_onboarding?sslmode=disable
+    volumes:
+      - ./seed:/seed:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -f /seed/reset.sql']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    build:
+      context: .
+    environment:
+      HTTP_PORT: "8080"
+      DATABASE_URL: postgres://onboarding:onboarding@postgres:5432/vendor_onboarding?sslmode=disable
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      STUCK_AFTER_DAYS: ${STUCK_AFTER_DAYS:-7}
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  web:
+    build:
+      context: ./web
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  postgres-test:
+    image: postgres:17-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_DB: vendor_onboarding_test
+      POSTGRES_USER: onboarding
+      POSTGRES_PASSWORD: onboarding
+    ports:
+      - "${POSTGRES_TEST_PORT:-5435}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onboarding -d vendor_onboarding_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  migrate-test:
+    image: migrate/migrate:v4.18.3
+    profiles: ["test"]
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgres://onboarding:onboarding@postgres-test:5432/vendor_onboarding_test?sslmode=disable
+      - up
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
