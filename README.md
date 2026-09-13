@@ -3,9 +3,8 @@
 A small SPA for coordinators to track seeded vendors through onboarding, see how long each vendor has remained in
 its current stage, and retain an attributable history of every stage change.
 
-> Implementation status: Phase 1 of 5 is complete. The repository shell, database-backed health check, React
-> application shell, Compose orchestration, and documentation structure are available. Login and vendor workflows
-> are intentionally introduced in later phases.
+> Implementation status: Phase 2 of 5 is complete. Seeded coordinator login, session restoration, protected
+> routing, and logout are available. Vendor workflow data is intentionally introduced in Phase 3.
 
 ## Run locally
 
@@ -16,7 +15,16 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open <http://localhost:5173>. API readiness is available at <http://localhost:8080/health>.
+Open <http://localhost:5173>. The app redirects to the coordinator login page. API readiness is available at
+<http://localhost:8080/health>.
+
+### Demo accounts
+
+| Coordinator | Email | Password |
+| --- | --- | --- |
+| Linh Nguyen | `linh@demo.local` | `demo1234` |
+| Huy Tran | `huy@demo.local` | `demo1234` |
+| Mai Pham | `mai@demo.local` | `demo1234` |
 
 Stop the stack without deleting data:
 
@@ -66,10 +74,11 @@ Detailed decisions and diagrams live in
 
 ## Scope and assumptions
 
-Phase 1 establishes infrastructure only. The locked product scope is a coordinator-only view over seeded vendor
-data. Vendor creation/deletion, production authentication, external compliance/activation integrations, and
-coordinator assignment/reassignment are out of scope. Assignment/reassignment with append-only history is the
-first planned improvement after the assignment.
+The locked product scope is a coordinator-only view over seeded vendor data. Authentication is intentionally
+local-only: sessions live in API memory for eight hours, so restarting the API requires signing in again. Vendor
+creation/deletion, production authentication, external compliance/activation integrations, and coordinator
+assignment/reassignment are out of scope. Assignment/reassignment with append-only history is the first planned
+improvement after the assignment.
 
 ## Delivery phases
 
@@ -81,6 +90,6 @@ first planned improvement after the assignment.
 
 ## Testing strategy
 
-Tests focus on business risks rather than framework coverage: legal workflow movement, the stuck-time boundary,
-and the guarantee that the current state and audit history cannot disagree. Phase 1 includes a focused readiness
-handler test; later phases add the domain, HTTP, frontend, transaction, and concurrency cases.
+Tests focus on business risks rather than framework coverage: identity comes from the server session, invalid or
+expired sessions cannot reach protected routes, logout invalidates both server and client state, and internal
+errors do not leak. Later phases add workflow, time-boundary, transaction, and concurrency cases.

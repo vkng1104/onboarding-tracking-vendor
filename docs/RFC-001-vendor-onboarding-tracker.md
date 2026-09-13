@@ -61,13 +61,31 @@ startup command. The API owns workflow, time, identity, and transaction rules; t
 
 ## Data model and invariants
 
-Phase 2 adds coordinators. Phase 3 adds vendors and immutable history rows. Phase 4 writes current state and
-history atomically while holding a row lock. Final ER and state diagrams will be added with those schemas.
+```mermaid
+erDiagram
+    COORDINATORS {
+        uuid id PK
+        text name
+        text email UK
+        text password_hash
+        timestamptz created_at
+    }
+```
+
+Coordinator email is normalized to lowercase before lookup and constrained to lowercase in PostgreSQL. Passwords
+are stored as bcrypt hashes. Phase 3 adds vendors and immutable history rows. Phase 4 writes current state and
+history atomically while holding a row lock.
 
 ## API contracts
 
-Phase 1 exposes `GET /health`, returning `200 {"status":"ok"}` when PostgreSQL responds and `503` otherwise.
-Authentication and vendor endpoints are introduced in their owning phases.
+| Endpoint | Contract |
+| --- | --- |
+| `GET /health` | `200 {"status":"ok"}` when PostgreSQL responds; otherwise `503` |
+| `POST /api/v1/auth/login` | `{email,password}` → coordinator plus an HttpOnly session cookie |
+| `GET /api/v1/auth/me` | Current coordinator; `401 UNAUTHENTICATED` without a valid session |
+| `POST /api/v1/auth/logout` | Idempotently invalidate the session, expire the cookie, and return `204` |
+
+Vendor endpoints are introduced in their owning phases.
 
 ## Frontend composition
 
@@ -83,9 +101,11 @@ Feature API/query code stays grouped by domain rather than by visual level.
 
 ## Security and error handling
 
-The final local-only authentication uses server-side sessions and an HttpOnly, SameSite cookie. The request body
-never supplies the transition actor. HTTP errors use stable codes and do not expose database details. Production
-identity, HTTPS termination, and persistent session storage remain explicitly out of scope.
+Local-only authentication uses bcrypt verification and crypto-random, eight-hour server-side sessions protected by
+a mutex. The browser receives only an HttpOnly, SameSite=Lax cookie. The request body never supplies identity.
+HTTP errors use stable codes and do not expose database details. Restarting the API invalidates sessions;
+production identity, HTTPS termination, CSRF hardening beyond SameSite, rate limiting, and persistent session
+storage remain explicitly out of scope.
 
 ## Requirements and verification
 
@@ -95,6 +115,9 @@ identity, HTTPS termination, and persistent session storage remain explicitly ou
 | API readiness | Database-backed `/health` | Handler test plus live request |
 | Frontend foundation | Vite route and Query provider | Lint, typecheck, test, build |
 | Safe test isolation | Ephemeral `postgres-test` profile | Integration target leaves app data untouched |
+| Seeded coordinator identity | Bcrypt seed plus server session | Login/service and live HTTP flow |
+| Protected routes | `/me` is the auth source of truth | Missing/expired session and route-guard tests |
+| Logout | Delete server session and clear Query cache | Old-cookie API test and navigation test |
 
 The table expands as each product phase lands.
 
