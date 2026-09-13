@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/khanhvunguyen/vendor-onboarding-tracker/internal/auth"
 	"github.com/khanhvunguyen/vendor-onboarding-tracker/internal/config"
 	"github.com/khanhvunguyen/vendor-onboarding-tracker/internal/database"
 	"github.com/khanhvunguyen/vendor-onboarding-tracker/internal/health"
@@ -45,7 +46,8 @@ func run() error {
 	}
 	defer db.Close()
 
-	router := newRouter(health.NewHandler(db))
+	authService := auth.NewService(auth.NewRepository(db), auth.NewSessionStore(8*time.Hour))
+	router := newRouter(health.NewHandler(db), auth.NewHandler(authService))
 	server := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,
 		Handler:           router,
@@ -88,11 +90,12 @@ func run() error {
 	return nil
 }
 
-func newRouter(healthHandler http.Handler) chi.Router {
+func newRouter(healthHandler http.Handler, authHandler *auth.Handler) chi.Router {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(observability.RequestLogger)
 	router.Use(middleware.Recoverer)
 	router.Get("/health", healthHandler.ServeHTTP)
+	authHandler.MountRoutes(router)
 	return router
 }
