@@ -1,0 +1,9 @@
+.DS_Store
+.env
+*.log
+coverage.out
+vendor-onboarding-api
+
+web/dist/
+web/node_modules/
+web/coverage/
