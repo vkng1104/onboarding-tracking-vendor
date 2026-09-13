@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -64,6 +64,13 @@ describe('DashboardPage', () => {
     expect(within(stuckRow).getByText('Huy Tran')).toBeInTheDocument()
     expect(within(stuckRow).getByText('Waiting on business license re-upload')).toBeInTheDocument()
 
+    const attentionInfo = screen.getByRole('button', { name: 'What does Need attention mean?' })
+    const attentionTooltip = screen.getByRole('tooltip')
+    expect(attentionInfo).toHaveAttribute('aria-describedby', attentionTooltip.id)
+    expect(attentionTooltip).toHaveTextContent(
+      'A vendor needs attention when it stays in the same onboarding stage longer than the configured limit (7 days by default). Active vendors are excluded.',
+    )
+
     fireEvent.click(screen.getByRole('button', { name: /Assigned to me/ }))
     expect(within(table).queryByRole('row', { name: /Company B/ })).not.toBeInTheDocument()
     expect(within(table).getByRole('row', { name: /Company C/ })).toBeInTheDocument()
@@ -91,6 +98,7 @@ describe('DashboardPage', () => {
     renderDashboard('/vendors/company-b')
 
     expect(await screen.findByRole('complementary', { name: 'Company B details' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Close' })).toHaveClass('border-rose-300', 'text-rose-700')
     expect(await screen.findByText('Contract Signed → KYC Docs Received')).toBeInTheDocument()
     expect(screen.getByText('Changed by Linh Nguyen')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
@@ -221,7 +229,7 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Another coordinator changed this vendor. Review the latest stage and try again.',
     )
-    expect(screen.getByLabelText('Move to stage')).toHaveValue('KYC_VERIFIED')
+    await waitFor(() => expect(screen.getByLabelText('Move to stage')).toHaveValue('KYC_VERIFIED'))
     expect(await screen.findByText('KYC Docs Received → KYC Verified')).toBeInTheDocument()
   })
 
