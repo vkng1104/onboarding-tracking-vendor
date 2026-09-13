@@ -241,7 +241,7 @@ func TestVendorRoutesApplyAuthenticationMiddleware(t *testing.T) {
 	}
 }
 
-func testVendorRouter(store Store) chi.Router {
+func testVendorRouter(store store) chi.Router {
 	service := newService(store, 7*24*time.Hour, func() time.Time {
 		return time.Date(2026, time.September, 13, 12, 0, 0, 0, time.UTC)
 	})

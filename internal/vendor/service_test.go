@@ -3,6 +3,7 @@ package vendor
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 )
@@ -55,21 +56,30 @@ func TestListCalculatesTimeStuckStateAndNextStage(t *testing.T) {
 		t.Fatalf("list vendors: %v", err)
 	}
 
+	byID := make(map[string]Vendor, len(vendors))
+	for _, vendor := range vendors {
+		byID[vendor.ID] = vendor
+	}
+
 	tests := []struct {
-		index     int
+		id        string
 		wantHours int64
 		wantStuck bool
 		wantNext  *Stage
 	}{
-		{index: 0, wantHours: 167, wantStuck: false, wantNext: stagePointer(StageContractSigned)},
-		{index: 1, wantHours: 168, wantStuck: false, wantNext: stagePointer(StageKYCDocsReceived)},
-		{index: 2, wantHours: 169, wantStuck: true, wantNext: stagePointer(StageKYCVerified)},
-		{index: 3, wantHours: 2400, wantStuck: false, wantNext: nil},
-		{index: 4, wantHours: 0, wantStuck: false, wantNext: stagePointer(StageActive)},
+		{id: "on-track", wantHours: 167, wantStuck: false, wantNext: stagePointer(StageContractSigned)},
+		{id: "boundary", wantHours: 168, wantStuck: false, wantNext: stagePointer(StageKYCDocsReceived)},
+		{id: "stuck", wantHours: 169, wantStuck: true, wantNext: stagePointer(StageKYCVerified)},
+		{id: "active", wantHours: 2400, wantStuck: false, wantNext: nil},
+		{id: "future", wantHours: 0, wantStuck: false, wantNext: stagePointer(StageActive)},
 	}
 
 	for _, tt := range tests {
-		vendor := vendors[tt.index]
+		vendor, ok := byID[tt.id]
+		if !ok {
+			t.Errorf("vendor %q missing from list", tt.id)
+			continue
+		}
 		if vendor.HoursInCurrentStage != tt.wantHours {
 			t.Errorf("vendor %q hours = %d, want %d", vendor.ID, vendor.HoursInCurrentStage, tt.wantHours)
 		}
@@ -79,6 +89,43 @@ func TestListCalculatesTimeStuckStateAndNextStage(t *testing.T) {
 		if !equalStagePointers(vendor.NextStage, tt.wantNext) {
 			t.Errorf("vendor %q next stage = %v, want %v", vendor.ID, vendor.NextStage, tt.wantNext)
 		}
+	}
+}
+
+func TestListPutsStuckVendorsFirstAndCompletedWorkLast(t *testing.T) {
+	now := time.Date(2026, time.September, 13, 12, 0, 0, 0, time.UTC)
+	records := []record{
+		{ID: "active", Name: "Company A", CurrentStage: StageActive, StageEnteredAt: now.Add(-100 * 24 * time.Hour)},
+		{ID: "waiting-briefly", Name: "Company B", CurrentStage: StageContractSent, StageEnteredAt: now.Add(-2 * time.Hour)},
+		{ID: "stuck-longest", Name: "Company C", CurrentStage: StageKYCDocsReceived, StageEnteredAt: now.Add(-40 * 24 * time.Hour)},
+		{ID: "waiting-longer", Name: "Company D", CurrentStage: StageContractSigned, StageEnteredAt: now.Add(-5 * 24 * time.Hour)},
+		{ID: "stuck-recently", Name: "Company E", CurrentStage: StageKYCVerified, StageEnteredAt: now.Add(-8 * 24 * time.Hour)},
+		{ID: "tie-later-name", Name: "Company Z", CurrentStage: StageContractSent, StageEnteredAt: now.Add(-3 * 24 * time.Hour)},
+		{ID: "tie-earlier-name", Name: "Company M", CurrentStage: StageContractSent, StageEnteredAt: now.Add(-3 * 24 * time.Hour)},
+	}
+	store := storeStub{list: func(context.Context) ([]record, error) { return records, nil }}
+	service := newService(store, 7*24*time.Hour, func() time.Time { return now })
+
+	vendors, err := service.List(context.Background())
+	if err != nil {
+		t.Fatalf("list vendors: %v", err)
+	}
+
+	got := make([]string, 0, len(vendors))
+	for _, vendor := range vendors {
+		got = append(got, vendor.ID)
+	}
+	want := []string{
+		"stuck-longest",    // stuck, waiting the longest
+		"stuck-recently",   // stuck, waiting less
+		"waiting-longer",   // on track, but waiting the longest
+		"tie-earlier-name", // equal wait, so the name decides
+		"tie-later-name",
+		"waiting-briefly",
+		"active", // complete work sinks below anything still in progress
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("order = %v, want %v", got, want)
 	}
 }
 

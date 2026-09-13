@@ -1,28 +1,30 @@
 package vendor
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"time"
 )
 
-type Store interface {
+type store interface {
 	List(context.Context) ([]record, error)
 	History(context.Context, string) ([]HistoryEvent, error)
 	UpdateStage(context.Context, string, string, Stage, Stage, time.Time) (stageTransitionRecord, error)
 }
 
 type Service struct {
-	store      Store
+	store      store
 	stuckAfter time.Duration
 	now        func() time.Time
 }
 
-func NewService(store Store, stuckAfterDays int) *Service {
+func NewService(store store, stuckAfterDays int) *Service {
 	return newService(store, time.Duration(stuckAfterDays)*24*time.Hour, time.Now)
 }
 
-func newService(store Store, stuckAfter time.Duration, now func() time.Time) *Service {
+func newService(store store, stuckAfter time.Duration, now func() time.Time) *Service {
 	return &Service{store: store, stuckAfter: stuckAfter, now: now}
 }
 
@@ -56,6 +58,8 @@ func (s *Service) List(ctx context.Context) ([]Vendor, error) {
 			NextStage: nextStage(record.CurrentStage),
 		})
 	}
+
+	slices.SortFunc(vendors, byAttentionNeeded)
 	return vendors, nil
 }
 
@@ -100,4 +104,30 @@ func (s *Service) UpdateStage(
 		PreviousStage: transition.PreviousStage,
 		NewStage:      transition.NewStage,
 	}, nil
+}
+
+// attentionRank ranks a vendor by how much coordinator attention it needs: stuck
+// vendors first, then vendors still moving through the workflow, then completed ones.
+func attentionRank(vendor Vendor) int {
+	switch {
+	case vendor.IsStuck:
+		return 0
+	case vendor.CurrentStage == StageActive:
+		return 2
+	default:
+		return 1
+	}
+}
+
+// byAttentionNeeded puts the most urgent vendor first so a coordinator scanning the
+// dashboard sees stalled work before anything else. Ties fall back to the longest
+// wait and then to the name, so the order is stable for the same data.
+func byAttentionNeeded(left, right Vendor) int {
+	if rank := cmp.Compare(attentionRank(left), attentionRank(right)); rank != 0 {
+		return rank
+	}
+	if wait := cmp.Compare(right.HoursInCurrentStage, left.HoursInCurrentStage); wait != 0 {
+		return wait
+	}
+	return cmp.Compare(left.Name, right.Name)
 }

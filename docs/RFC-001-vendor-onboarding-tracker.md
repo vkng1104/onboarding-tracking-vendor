@@ -2,7 +2,7 @@
 
 | Metadata | Value |
 | --- | --- |
-| Status | Draft |
+| Status | Implemented |
 | Owner | Candidate |
 | Created | 2026-09-13 |
 | Target | Take-home implementation |
@@ -25,9 +25,9 @@
 
 ## Summary
 
-Replace the manually maintained onboarding spreadsheet with a coordinator-facing SPA backed by an explicit
-workflow and an append-only transition history. The service derives elapsed time and stuck state from
-server-authored timestamps.
+The implementation replaces the manually maintained onboarding spreadsheet with a coordinator-facing SPA backed
+by an explicit workflow and an append-only transition history. The service derives elapsed time and stuck state
+from server-authored timestamps.
 
 ## Goals and non-goals
 
@@ -182,6 +182,7 @@ storage remain explicitly out of scope.
 | Logout | Delete server session and clear Query cache | Old-cookie API test and navigation test |
 | Vendor visibility | Authenticated list over six durable fixtures | Live seed query and HTTP contract test |
 | Stuck detection | Server clock and configured strict threshold | 167h/168h/169h plus old-Active unit cases |
+| Attention-first list order | Stuck first, then longest wait, then name | Ordering unit test over mixed fixtures |
 | Vendor history | Indexed append-only records with server-authored actor/time fields | History HTTP contract and direct-route UI test |
 | Stage correction | Any different known stage, including an earlier stage | Service, HTTP, and UI backward-transition tests |
 | Atomic audit | Row lock plus vendor update and history insert in one transaction | Rollback integration test |
@@ -189,17 +190,21 @@ storage remain explicitly out of scope.
 | Coordinator ownership view | Client-side All/Assigned-to-me filter | Dashboard render/filter test |
 | Recoverable direct URL | Resolve selected vendor from the cached list | Unknown-ID UI test |
 
-The table expands as each product phase lands.
+The verification choices prioritize identity, time boundaries, audit atomicity, and concurrent edits because those
+are the spreadsheet replacement's highest-risk behaviors.
 
 ## Delivery plan
 
-1. Repository and runnable shell.
-2. Seeded coordinator login.
-3. Vendor dashboard, stuck state, and history view.
-4. Transactional stage transition and audit.
-5. Documentation and release QA.
+| Phase | Deliverable | Status |
+| --- | --- | --- |
+| 1 | Repository and runnable shell | Complete |
+| 2 | Seeded coordinator login | Complete |
+| 3 | Vendor dashboard, stuck state, and history view | Complete |
+| 4 | Transactional stage transition and audit | Complete |
+| 5 | Documentation and release QA | Complete |
 
-Each phase is a reviewable PR-sized change with its own verification gate.
+Each phase was delivered as a reviewable PR-sized change with its own verification gate. Run and test commands are
+kept in the [README](../README.md) so this RFC remains focused on design decisions.
 
 ## Risks, open questions, and future improvements
 
