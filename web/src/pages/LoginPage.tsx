@@ -6,8 +6,8 @@ import { Spinner } from '../components/atoms/Spinner'
 import { ErrorAlert } from '../components/molecules/ErrorAlert'
 import { FormField } from '../components/molecules/FormField'
 import { AuthLayout } from '../components/templates/AuthLayout'
-import { ApiError } from '../features/auth/api'
 import { useCurrentCoordinator, useLogin } from '../features/auth/queries'
+import { ApiError } from '../lib/api'
 
 export function LoginPage() {
   const navigate = useNavigate()

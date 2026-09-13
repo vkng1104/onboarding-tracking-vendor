@@ -3,7 +3,7 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { Spinner } from '../../components/atoms/Spinner'
 import { ErrorAlert } from '../../components/molecules/ErrorAlert'
 import { AuthLayout } from '../../components/templates/AuthLayout'
-import { ApiError } from './api'
+import { ApiError } from '../../lib/api'
 import { useCurrentCoordinator } from './queries'
 
 export function ProtectedRoute() {

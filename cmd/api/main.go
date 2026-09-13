@@ -19,6 +19,7 @@ import (
 	"github.com/khanhvunguyen/vendor-onboarding-tracker/internal/database"
 	"github.com/khanhvunguyen/vendor-onboarding-tracker/internal/health"
 	"github.com/khanhvunguyen/vendor-onboarding-tracker/internal/observability"
+	"github.com/khanhvunguyen/vendor-onboarding-tracker/internal/vendor"
 )
 
 func main() {
@@ -47,7 +48,9 @@ func run() error {
 	defer db.Close()
 
 	authService := auth.NewService(auth.NewRepository(db), auth.NewSessionStore(8*time.Hour))
-	router := newRouter(health.NewHandler(db), auth.NewHandler(authService))
+	authHandler := auth.NewHandler(authService)
+	vendorService := vendor.NewService(vendor.NewRepository(db), cfg.StuckAfterDays)
+	router := newRouter(health.NewHandler(db), authHandler, vendor.NewHandler(vendorService))
 	server := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,
 		Handler:           router,
@@ -90,12 +93,13 @@ func run() error {
 	return nil
 }
 
-func newRouter(healthHandler http.Handler, authHandler *auth.Handler) chi.Router {
+func newRouter(healthHandler http.Handler, authHandler *auth.Handler, vendorHandler *vendor.Handler) chi.Router {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(observability.RequestLogger)
 	router.Use(middleware.Recoverer)
 	router.Get("/health", healthHandler.ServeHTTP)
 	authHandler.MountRoutes(router)
+	vendorHandler.MountRoutes(router, authHandler.RequireAuthentication)
 	return router
 }

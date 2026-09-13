@@ -30,7 +30,7 @@ server-authored timestamps.
 
 ## Goals and non-goals
 
-Goals are a seeded coordinator identity, a useful vendor list, forward stage transitions, attributable history,
+Goals are a seeded coordinator identity, a useful vendor list, stage transitions, attributable history,
 and stuck-vendor highlighting. Non-goals are vendor CRUD, account administration, production authentication,
 external integrations, deployment infrastructure, and assignment/reassignment.
 
@@ -38,7 +38,7 @@ external integrations, deployment infrastructure, and assignment/reassignment.
 
 - **Coordinator:** the authenticated operator using this application.
 - **Stage:** one of the five ordered vendor onboarding states.
-- **Transition:** an allowed move from the current stage to its immediate successor.
+- **Transition:** an allowed move from the current stage to any different workflow stage, including a previous stage.
 - **Stuck:** a non-Active vendor that has remained in its current stage for more than the configured threshold.
 
 ## Current state
@@ -70,11 +70,35 @@ erDiagram
         text password_hash
         timestamptz created_at
     }
+    VENDORS {
+        uuid id PK
+        text name
+        text region
+        text notes
+        text current_stage
+        timestamptz stage_entered_at
+        uuid assigned_coordinator_id FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    VENDOR_STAGE_TRANSITIONS {
+        uuid id PK
+        uuid vendor_id FK
+        text previous_stage
+        text new_stage
+        uuid changed_by_coordinator_id FK
+        timestamptz changed_at
+    }
+    COORDINATORS ||--o{ VENDORS : assigned_to
+    COORDINATORS ||--o{ VENDOR_STAGE_TRANSITIONS : changed_by
+    VENDORS ||--o{ VENDOR_STAGE_TRANSITIONS : records
 ```
 
 Coordinator email is normalized to lowercase before lookup and constrained to lowercase in PostgreSQL. Passwords
-are stored as bcrypt hashes. Phase 3 adds vendors and immutable history rows. Phase 4 writes current state and
-history atomically while holding a row lock.
+are stored as bcrypt hashes. The application validates stage inputs against the five workflow values, while the
+database rejects same-stage history records. Backward transitions are permitted and recorded like any other change.
+The vendor row is the current-state read model; transition rows form the attributable history. Phase 4 writes both
+atomically while holding a row lock.
 
 ## API contracts
 
@@ -84,8 +108,10 @@ history atomically while holding a row lock.
 | `POST /api/v1/auth/login` | `{email,password}` → coordinator plus an HttpOnly session cookie |
 | `GET /api/v1/auth/me` | Current coordinator; `401 UNAUTHENTICATED` without a valid session |
 | `POST /api/v1/auth/logout` | Idempotently invalidate the session, expire the cookie, and return `204` |
+| `GET /api/v1/vendors` | All vendors with server-derived elapsed hours, stuck state, and expected next stage |
+| `GET /api/v1/vendors/{id}/history` | Reverse-chronological, attributable stage transitions; `404 VENDOR_NOT_FOUND` for an unknown ID |
 
-Vendor endpoints are introduced in their owning phases.
+The Phase 3 vendor endpoints are read-only. Stage mutation is introduced in Phase 4.
 
 ## Frontend composition
 
@@ -118,6 +144,11 @@ storage remain explicitly out of scope.
 | Seeded coordinator identity | Bcrypt seed plus server session | Login/service and live HTTP flow |
 | Protected routes | `/me` is the auth source of truth | Missing/expired session and route-guard tests |
 | Logout | Delete server session and clear Query cache | Old-cookie API test and navigation test |
+| Vendor visibility | Authenticated list over six durable fixtures | Live seed query and HTTP contract test |
+| Stuck detection | Server clock and configured strict threshold | 167h/168h/169h plus old-Active unit cases |
+| Vendor history | Indexed append-only records with server-authored actor/time fields | History HTTP contract and direct-route UI test |
+| Coordinator ownership view | Client-side All/Assigned-to-me filter | Dashboard render/filter test |
+| Recoverable direct URL | Resolve selected vendor from the cached list | Unknown-ID UI test |
 
 The table expands as each product phase lands.
 
@@ -135,5 +166,6 @@ Each phase is a reviewable PR-sized change with its own verification gate.
 
 - The three-hour limit requires cutting presentation polish before workflow correctness.
 - In-memory sessions intentionally disappear when the API restarts.
-- Forward-only transitions cannot correct bad data; a later corrective event should require a reason.
+- Allowing backward transitions supports corrections but can also permit accidental regression; a production
+  workflow could require confirmation or a reason when moving backward.
 - The first product improvement is assignment/reassignment with an append-only ownership history.
