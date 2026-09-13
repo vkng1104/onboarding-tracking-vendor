@@ -11,6 +11,7 @@ export function AppRouter() {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/vendors" element={<DashboardPage />} />
+          <Route path="/vendors/:vendorId" element={<DashboardPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/vendors" replace />} />
       </Routes>
