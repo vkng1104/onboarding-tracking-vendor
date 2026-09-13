@@ -113,7 +113,7 @@ sequenceDiagram
     Coordinator->>SPA: Select any different stage
     SPA->>API: PATCH stage with observed and desired stages
     API->>API: Validate both workflow stages and session actor
-    API->>DB: BEGIN; SELECT vendor FOR UPDATE
+    API->>DB: BEGIN -> SELECT vendor FOR UPDATE
     alt Observed stage is stale
         DB-->>API: Current stage differs
         API-->>SPA: 409 STAGE_CONFLICT
